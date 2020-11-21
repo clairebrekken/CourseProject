@@ -48,13 +48,12 @@ def run_metapy(tweet):
 # Enter mutable info
 
 data_dir = os.path.dirname(os.getcwd()) + '/data'
-filename = 'test.jsonl'
+filename = 'train.jsonl'
 file = os.path.join(data_dir, filename)  # .json file
 
 # parse the .json file
 
 df = utils.parse_json(file)
-df = df.head()
 
 # remove @USER from responses
 # Ger number of users tagged in reponse
@@ -83,4 +82,4 @@ df["emojis"] = df.tokens.apply(lambda tweet: len([w for w in tweet if w in emoji
 # df["POS"] = df.response.apply(run_metapy)
 df.drop(columns=["context", "tokens", "response"], inplace=True)
 
-df.to_csv("test_feature_engineering.csv", index=False)
+df.to_csv("train_feature_engineering.csv", index=False)
