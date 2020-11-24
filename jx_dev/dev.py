@@ -33,8 +33,8 @@ warnings.filterwarnings("ignore")
 
 #%% Enter mutable info
 
-data_dir    = os.path.commonpath(os.getcwd() + '\data''')
-results_dir = os.path.commonpath(os.getcwd() + '\results''')
+data_dir    = os.getcwd() + '\data'''
+results_dir = os.getcwd() + '\results'''
 
 # training data 
 #file_train = 'train.jsonl'
@@ -149,7 +149,7 @@ models.append(['XGB'   , xgb])
 
 n_splits      = 10 # folds 
 cv            = StratifiedKFold(n_splits = n_splits, random_state = 42)
-scores        = ['balanced_accuracy', 'recall', 'precision', 'roc_auc', 'f1']
+scores        = ['accuracy', 'recall', 'precision', 'roc_auc', 'f1']
 
 #%% prepare cross-validation storage
 
@@ -158,7 +158,7 @@ xval_cols     = ['classifier',
                  'recall', 
                  'precision',
                  'f1',
-                 'balanced_accuracy',
+                 'accuracy',
                  'roc_auc']
 
 roc_cols      = ['classifier', 'tpr', 'fpr']
@@ -186,7 +186,7 @@ for i, (name, model) in enumerate(models):
     print(name + ' cross-validation completed')
 
     # clean up the df 
-    score_results              = pd.DataFrame(score_results).loc[:,['test_balanced_accuracy', 'test_f1', 'test_recall', 'test_precision', 'test_roc_auc']]
+    score_results              = pd.DataFrame(score_results).loc[:,['test_accuracy', 'test_f1', 'test_recall', 'test_precision', 'test_roc_auc']]
     score_results.columns      = score_results.columns.str.replace('test_','')
     
     # store the metric results 
