@@ -25,6 +25,8 @@ from   sklearn.ensemble        import RandomForestClassifier
 import xgboost                 as     xgb
 from   sklearn.metrics         import roc_curve
 from   scipy                   import interp
+from   pathlib                 import Path
+
 
 # Turn interactive plotting off
 plt.ion()  
@@ -33,28 +35,30 @@ warnings.filterwarnings("ignore")
 
 #%% Enter mutable info
 
-data_dir    = os.getcwd() + '\data'''
-results_dir = os.getcwd() + '\results'''
+data_dir    = os.path.join(os.getcwd(), 'data')
+results_dir = os.path.join(os.getcwd(), 'results')
 
 # training data 
 #file_train = 'train.jsonl'
 
-# feat data
-file_feat   = 'train_feature_engineering.csv';
+# training data
+file_train  = 'train_feature_engineering.csv';
+file_test   = 'test_feature_engineering.csv'
 
 #file_train = os.path.join(data_dir, file_train) 
-file_feat   = os.path.join(data_dir, file_feat) 
+file_train  = os.path.join(data_dir, file_train) 
+file_test   = os.path.join(data_dir, file_test) 
 
 #%% load in data 
 
 #df_train = utils.parse_json(file_train)
-df_feat  = pd.read_csv(file_feat)
+df_train  = pd.read_csv(file_train)
 
 # feats
-x_train  = df_feat.iloc[:, 2:]
+x_train  = df_train.iloc[:, 1:]
 
 # labels 
-y_train  = df_feat.label
+y_train  = df_train.label
 
 # convert labels to binary (1 - sarcasm)
 y_train  = [1 if i == 'SARCASM' else 0 for i in y_train]
@@ -256,7 +260,7 @@ manager.window.showMaximized()
 
 plt.show()
 plt.pause(0.1) # needed for the image to be saved at full size
-plt.savefig(fig_file)
+plt.savefig(Path(fig_file))
 
 #%% plot cross-validated ROC 
 
@@ -289,4 +293,54 @@ manager   = plt.get_current_fig_manager()
 manager.window.showMaximized()
 plt.show()
 plt.pause(0.1) # needed for the image to be saved at full size
-plt.savefig(fig_file)
+plt.savefig(Path(fig_file))
+
+#%% 
+#=================================================
+#  ____               _ _      _   _             
+# |  _ \ _ __ ___  __| (_) ___| |_(_) ___  _ __  
+# | |_) | '__/ _ \/ _` | |/ __| __| |/ _ \| '_ \ 
+# |  __/| | |  __/ (_| | | (__| |_| | (_) | | | |
+# |_|   |_|  \___|\__,_|_|\___|\__|_|\___/|_| |_|
+#
+#=================================================
+
+# process test data 
+df_test  = pd.read_csv(file_test)
+
+# feats
+x_test   = df_test.iloc[:, 1:]
+
+# tweet id
+t_id     = df_test.id.to_frame()
+
+#%% 
+# retrain best model on the entire training set 
+svc_rbf_final = svc_rbf.fit(x_train, y_train)
+rndf_final    = rndf.fit(x_train, y_train)
+logreg_final  = logreg.fit(x_train, y_train)
+xgb_final     = xgb.fit(x_train, y_train)
+
+#%% make prediction 
+
+final_models      = [svc_rbf_final, rndf_final, logreg_final, xgb_final]
+final_model_names = ['svc_rbf', 'rndf', 'logreg', 'xgb']
+
+for model, name in zip(final_models, final_model_names): 
+    
+    # make prediction 
+    pred     = model.predict(x_test)
+    
+    # convert to text labels
+    pred     = ['SARCASM' if i == 1 else 'NOT_SARCASM' for i in pred]
+    
+    pred     = pd.DataFrame(pred, columns = ['predictions'])
+
+    # concat into df
+    answer   = pd.concat([t_id, pred], axis = 1)
+    
+    # construct file name 
+    file_ans = Path(os.path.join(os.getcwd(), 'answer_' + name + '.txt'))
+    
+    # name the file, based on the classifier
+    answer.to_csv(file_ans, header = None, index = None, sep=',')
