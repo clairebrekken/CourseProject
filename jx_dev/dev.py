@@ -296,6 +296,9 @@ plt.pause(0.1) # needed for the image to be saved at full size
 plt.savefig(Path(fig_file))
 
 #%% 
+
+
+#%% 
 #=================================================
 #  ____               _ _      _   _             
 # |  _ \ _ __ ___  __| (_) ___| |_(_) ___  _ __  
@@ -316,6 +319,7 @@ t_id     = df_test.id.to_frame()
 
 #%% 
 # retrain best model on the entire training set 
+svc_lin_final = svc_lin.fit(x_train, y_train)
 svc_rbf_final = svc_rbf.fit(x_train, y_train)
 rndf_final    = rndf.fit(x_train, y_train)
 logreg_final  = logreg.fit(x_train, y_train)
@@ -323,8 +327,12 @@ xgb_final     = xgb.fit(x_train, y_train)
 
 #%% make prediction 
 
-final_models      = [svc_rbf_final, rndf_final, logreg_final, xgb_final]
-final_model_names = ['svc_rbf', 'rndf', 'logreg', 'xgb']
+final_models      = [svc_lin_final,
+                     svc_rbf_final, 
+                     rndf_final, 
+                     logreg_final, 
+                     xgb_final]
+final_model_names = ['svc_lin', 'svc_rbf', 'rndf', 'logreg', 'xgb']
 
 for model, name in zip(final_models, final_model_names): 
     
@@ -343,4 +351,4 @@ for model, name in zip(final_models, final_model_names):
     file_ans = Path(os.path.join(os.getcwd(), 'answer_' + name + '.txt'))
     
     # name the file, based on the classifier
-    answer.to_csv(file_ans, header = None, index = None, sep=',')
+    answer.to_csv(file_ans, header = None, index = None, sep = ',')
