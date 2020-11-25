@@ -323,15 +323,17 @@ scalers     = [StandardScaler(),
                MinMaxScaler()]
 
 # define param grid
-grid_logreg = [{'scaler'                   : scalers,
-                'classifier'               : [LogisticRegression()],
+grid_logreg =  {'scaler'                   : scalers,
+                'classifier'               : [logreg_clf],
                 'classifier__penalty'      : ['l2'],
                 'classifier__C'            : np.logspace(-3, 3, 12),
                 'classifier__max_iter'     : [20000], 
-                'classifier__class_weight' : ['balanced']}]
+                'classifier__class_weight' : ['balanced']}
 
 # define cross-val method
-cv          = StratifiedKFold(n_splits = 10, shuffle = True)
+cv          = StratifiedKFold(n_splits     = 10, 
+                              shuffle      = True, 
+                              random_state = 42)
 
 # define scoring metric
 metric      = 'f1'
