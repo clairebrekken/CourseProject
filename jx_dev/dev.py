@@ -15,7 +15,9 @@ from   sklearn.model_selection import StratifiedKFold, \
                                       cross_val_predict, \
                                       GridSearchCV
 from   sklearn.pipeline        import Pipeline                            
-from   sklearn.preprocessing   import StandardScaler
+from   sklearn.preprocessing   import StandardScaler, \
+                                      RobustScaler, \
+                                      MinMaxScaler
 from   sklearn.tree            import DecisionTreeClassifier
 from   sklearn.linear_model    import LogisticRegression
 from   sklearn.svm             import LinearSVC, SVC
@@ -296,7 +298,56 @@ plt.pause(0.1) # needed for the image to be saved at full size
 plt.savefig(Path(fig_file))
 
 #%% 
+#===============================================================
+#  _   _                                                       
+# | | | |_   _ _ __   ___ _ __ _ __   __ _ _ __ __ _ _ __ ___  
+# | |_| | | | | '_ \ / _ \ '__| '_ \ / _` | '__/ _` | '_ ` _ \ 
+# |  _  | |_| | |_) |  __/ |  | |_) | (_| | | | (_| | | | | | |
+# |_|_|_|\__, | .__/_\___|_|  | .__/ \__,_|_|  \__,_|_| |_| |_|
+# |_   _||___/|_|_ (_)_ __   _|_|                              
+#   | || | | | '_ \| | '_ \ / _` |                             
+#   | || |_| | | | | | | | | (_| |                             
+#   |_| \__,_|_| |_|_|_| |_|\__, |                             
+#                           |___/                              
+#===============================================================
 
+#%% log_reg clf
+
+# create model pipeline 
+pipe_logreg = Pipeline([('scaler',     StandardScaler()),
+                        ('classifier', LogisticRegression())])
+
+# define scalers to try
+scalers     = [StandardScaler(), 
+               RobustScaler(), 
+               MinMaxScaler()]
+
+# define param grid
+grid_logreg = [{'scaler'                   : scalers,
+                'classifier'               : [LogisticRegression()],
+                'classifier__penalty'      : ['l2'],
+                'classifier__C'            : np.logspace(-3, 3, 12),
+                'classifier__max_iter'     : [20000], 
+                'classifier__class_weight' : ['balanced']}]
+
+# define cross-val method
+cv          = StratifiedKFold(n_splits = 10, shuffle = True)
+
+# define scoring metric
+metric      = 'f1'
+
+tune_logreg = GridSearchCV(pipe_logreg, 
+                           cv         = cv, 
+                           param_grid = grid_logreg, 
+                           scoring    = metric,
+                           refit      = True, 
+                           return_train_score = False, 
+                           n_jobs     = -1, 
+                           verbose    = 1)
+
+# perform tuning and extract best model
+best_logreg = tune_logreg.fit(x_train, y_train).best_estimator_
+print('tuning log_reg clf complete')
 
 #%% 
 #=================================================
@@ -322,7 +373,7 @@ t_id     = df_test.id.to_frame()
 svc_lin_final = svc_lin.fit(x_train, y_train)
 svc_rbf_final = svc_rbf.fit(x_train, y_train)
 rndf_final    = rndf.fit(x_train, y_train)
-logreg_final  = logreg.fit(x_train, y_train)
+logreg_final  = best_logreg.fit(x_train, y_train)
 xgb_final     = xgb.fit(x_train, y_train)
 
 #%% make prediction 
