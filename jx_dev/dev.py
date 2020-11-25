@@ -28,6 +28,7 @@ import xgboost                 as     xgb
 from   sklearn.metrics         import roc_curve
 from   scipy                   import interp
 from   pathlib                 import Path
+from   pickle                  import dump
 
 
 # Turn interactive plotting off
@@ -311,24 +312,12 @@ plt.savefig(Path(fig_file))
 #                           |___/                              
 #===============================================================
 
-#%% log_reg clf
-
-# create model pipeline 
-pipe_logreg = Pipeline([('scaler',     StandardScaler()),
-                        ('classifier', LogisticRegression())])
+# common params 
 
 # define scalers to try
 scalers     = [StandardScaler(), 
                RobustScaler(), 
                MinMaxScaler()]
-
-# define param grid
-grid_logreg =  {'scaler'                   : scalers,
-                'classifier'               : [logreg_clf],
-                'classifier__penalty'      : ['l2'],
-                'classifier__C'            : np.logspace(-3, 3, 12),
-                'classifier__max_iter'     : [20000], 
-                'classifier__class_weight' : ['balanced']}
 
 # define cross-val method
 cv          = StratifiedKFold(n_splits     = 10, 
@@ -338,18 +327,112 @@ cv          = StratifiedKFold(n_splits     = 10,
 # define scoring metric
 metric      = 'f1'
 
+#%% log_reg clf
+
+# base clf
+logreg_clf  = LogisticRegression(n_jobs       = -1, 
+                                 class_weight = 'balanced', 
+                                 random_state = 42)
+
+# create model pipeline 
+pipe_logreg = Pipeline([('scaler',     StandardScaler()),
+                        ('classifier', logreg_clf)])
+
+# define param grid
+grid_logreg =  {'scaler'                   : scalers,
+                'classifier'               : [logreg_clf],
+                'classifier__penalty'      : ['l2'],
+                'classifier__C'            : np.logspace(-3, 3, 12),
+                'classifier__max_iter'     : [20000], 
+                'classifier__class_weight' : ['balanced']}
+
 tune_logreg = GridSearchCV(pipe_logreg, 
-                           cv         = cv, 
-                           param_grid = grid_logreg, 
-                           scoring    = metric,
-                           refit      = True, 
+                           cv                 = cv, 
+                           param_grid         = grid_logreg, 
+                           scoring            = metric,
+                           refit              = True, 
                            return_train_score = False, 
-                           n_jobs     = -1, 
-                           verbose    = 1)
+                           n_jobs             = -1, 
+                           verbose            = 1)
 
 # perform tuning and extract best model
 best_logreg = tune_logreg.fit(x_train, y_train).best_estimator_
 print('tuning log_reg clf complete')
+
+#%% svc_lin
+
+# base clf
+svc_lin_clf  = LinearSVC(max_iter     = 20000, 
+                         class_weight = 'balanced', 
+                         random_state = 42)
+
+# create model pipeline 
+pipe_svc_lin = Pipeline([('scaler',     StandardScaler()),
+                         ('classifier', svc_lin_clf)])
+
+# define param grid
+grid_svc_lin = {'scaler'                   : scalers,
+                'classifier'               : [svc_lin_clf],
+                'classifier__penalty'      : ['l1', 'l2'],
+                'classifier__loss'         : ['hinge', 'squared_hinge'],
+                'classifier__C'            : np.logspace(-3, 3, 12),
+                'classifier__max_iter'     : [20000], 
+                'classifier__class_weight' : ['balanced']}
+
+tune_svc_lin = GridSearchCV(pipe_svc_lin, 
+                            cv                 = cv, 
+                            param_grid         = grid_svc_lin, 
+                            scoring            = metric,
+                            refit              = True, 
+                            return_train_score = False, 
+                            n_jobs             = -1, 
+                            verbose            = 1)
+
+# perform tuning and extract best model
+best_svc_lin = tune_svc_lin.fit(x_train, y_train).best_estimator_
+print('tuning svc_lin clf complete')
+
+# pickle the model 
+file_model   = os.path.join(results_dir, 'best_svc_lin.sav')
+dump(best_svc_lin, open(file_model, 'wb'))
+
+#%% rndf clf
+
+# base clf
+svc_lin_clf  = LinearSVC(max_iter     = 20000, 
+                         class_weight = 'balanced', 
+                         random_state = 42)
+
+# create model pipeline 
+pipe_svc_lin = Pipeline([('scaler',     StandardScaler()),
+                         ('classifier', svc_lin_clf)])
+
+# define param grid
+grid_svc_lin = {'scaler'                   : scalers,
+                'classifier'               : [svc_lin_clf],
+                'classifier__penalty'      : ['l1', 'l2'],
+                'classifier__loss'         : ['hinge', 'squared_hinge'],
+                'classifier__C'            : np.logspace(-3, 3, 12),
+                'classifier__max_iter'     : [20000], 
+                'classifier__class_weight' : ['balanced']}
+
+tune_svc_lin = GridSearchCV(pipe_svc_lin, 
+                            cv                 = cv, 
+                            param_grid         = grid_svc_lin, 
+                            scoring            = metric,
+                            refit              = True, 
+                            return_train_score = False, 
+                            n_jobs             = -1, 
+                            verbose            = 1)
+
+# perform tuning and extract best model
+best_svc_lin = tune_svc_lin.fit(x_train, y_train).best_estimator_
+print('tuning svc_lin clf complete')
+
+# pickle the model 
+file_model   = os.path.join(results_dir, 'best_svc_lin.sav')
+dump(best_svc_lin, open(file_model, 'wb'))
+
 
 #%% 
 #=================================================
@@ -372,7 +455,7 @@ t_id     = df_test.id.to_frame()
 
 #%% 
 # retrain best model on the entire training set 
-svc_lin_final = svc_lin.fit(x_train, y_train)
+svc_lin_final = best_svc_lin.fit(x_train, y_train)
 svc_rbf_final = svc_rbf.fit(x_train, y_train)
 rndf_final    = rndf.fit(x_train, y_train)
 logreg_final  = best_logreg.fit(x_train, y_train)
