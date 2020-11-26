@@ -23,12 +23,15 @@ from   sklearn.linear_model    import LogisticRegression
 from   sklearn.svm             import LinearSVC, SVC
 from   sklearn.neighbors       import KNeighborsClassifier
 from   sklearn.naive_bayes     import GaussianNB
-from   sklearn.ensemble        import RandomForestClassifier
+from   sklearn.ensemble        import RandomForestClassifier, \
+                                      AdaBoostClassifier, \
+                                      GradientBoostingClassifier
 import xgboost                 as     xgb
 from   sklearn.metrics         import roc_curve
 from   scipy                   import interp
 from   pathlib                 import Path
 from   pickle                  import dump
+import joblib
 
 
 # Turn interactive plotting off
@@ -137,6 +140,16 @@ rndf          = Pipeline([('scaler',   StandardScaler()),
 xgb_clf       = xgb.XGBClassifier(seed = 42)
 xgb           = Pipeline([('scaler',  StandardScaler()),
                           ('xgb_clf', xgb_clf)]) 
+
+# stochastic gradient boosting
+gb_clf        = GradientBoostingClassifier(random_state = 42)
+gb            = Pipeline([('scaler',  StandardScaler()),
+                          ('gb_clf',  gb_clf)])
+
+# adaboost
+adb_clf       = AdaBoostClassifier(random_state = 42)
+adb           = Pipeline([('scaler',  StandardScaler()),
+                          ('adb_clf', adb_clf)]) 
 
 #%% create model pipeline 
 
@@ -399,40 +412,47 @@ dump(best_svc_lin, open(file_model, 'wb'))
 #%% rndf clf
 
 # base clf
-svc_lin_clf  = LinearSVC(max_iter     = 20000, 
-                         class_weight = 'balanced', 
-                         random_state = 42)
+rndf_clf  = RandomForestClassifier(n_jobs         = -1, 
+                                   class_weight   = 'balanced', 
+                                   random_state   = 42)
 
 # create model pipeline 
-pipe_svc_lin = Pipeline([('scaler',     StandardScaler()),
-                         ('classifier', svc_lin_clf)])
+pipe_rndf         = Pipeline([('scaler',     StandardScaler()),
+                              ('classifier', rndf_clf)])
+
+n_estimators      = [100, 300, 500, 800, 1200]
+max_depth         = [5, 8, 15, 25, 30]
+min_samples_split = [2, 5, 10, 15, 100]
+min_samples_leaf  = [1, 2, 5, 10] 
+
 
 # define param grid
-grid_svc_lin = {'scaler'                   : scalers,
-                'classifier'               : [svc_lin_clf],
-                'classifier__penalty'      : ['l1', 'l2'],
-                'classifier__loss'         : ['hinge', 'squared_hinge'],
-                'classifier__C'            : np.logspace(-3, 3, 12),
-                'classifier__max_iter'     : [20000], 
-                'classifier__class_weight' : ['balanced']}
+grid_rndf         = {'scaler'                        : scalers,
+                     'classifier'                    : [rndf_clf],
+                     'classifier__n_estimators'      : n_estimators,
+                     'classifier__max_depth'         : max_depth,
+                     'classifier__min_samples_split' : min_samples_split,
+                     'classifier__min_samples_leaf'  : min_samples_leaf}
 
-tune_svc_lin = GridSearchCV(pipe_svc_lin, 
-                            cv                 = cv, 
-                            param_grid         = grid_svc_lin, 
-                            scoring            = metric,
-                            refit              = True, 
-                            return_train_score = False, 
-                            n_jobs             = -1, 
-                            verbose            = 1)
+tune_rndf         = GridSearchCV(pipe_rndf, 
+                                 cv                 = cv, 
+                                 param_grid         = grid_rndf, 
+                                 scoring            = metric,
+                                 refit              = True, 
+                                 return_train_score = False, 
+                                 n_jobs             = -1, 
+                                 verbose            = 1)
 
 # perform tuning and extract best model
-best_svc_lin = tune_svc_lin.fit(x_train, y_train).best_estimator_
-print('tuning svc_lin clf complete')
+best_rndf         = tune_rndf.fit(x_train, y_train).best_estimator_
+print('tuning rndf clf complete')
 
 # pickle the model 
-file_model   = os.path.join(results_dir, 'best_svc_lin.sav')
-dump(best_svc_lin, open(file_model, 'wb'))
+file_model        = os.path.join(results_dir, 'best_rndf.sav')
+dump(best_rndf, open(file_model, 'wb'))
 
+file_model        = os.path.join(results_dir, 'best_rndf.joblib')
+joblib.dump(best_rndf, file_model) 
 
 #%% 
 #=================================================
@@ -453,24 +473,37 @@ x_test   = df_test.iloc[:, 1:]
 # tweet id
 t_id     = df_test.id.to_frame()
 
-#%% 
-# retrain best model on the entire training set 
-svc_lin_final = best_svc_lin.fit(x_train, y_train)
+#%% retrain best model on the entire training set 
+
+# tuned models 
+svc_lin_final = best_svc_lin.fit(x_train, y_train) # good 
+rndf_final    = best_rndf.fit(x_train, y_train)    # bad 
+logreg_final  = best_logreg.fit(x_train, y_train)  # good
+
+# default models
 svc_rbf_final = svc_rbf.fit(x_train, y_train)
-rndf_final    = rndf.fit(x_train, y_train)
-logreg_final  = best_logreg.fit(x_train, y_train)
 xgb_final     = xgb.fit(x_train, y_train)
+adb_final     = adb.fit(x_train, y_train)
+gb_final      = gb.fit(x_train, y_train)
 
 #%% make prediction 
 
-final_models      = [svc_lin_final,
-                     svc_rbf_final, 
-                     rndf_final, 
-                     logreg_final, 
-                     xgb_final]
-final_model_names = ['svc_lin', 'svc_rbf', 'rndf', 'logreg', 'xgb']
+# final_models      = [svc_lin_final,
+#                      svc_rbf_final, 
+#                      rndf_final, 
+#                      logreg_final, 
+#                      xgb_final]
 
-for model, name in zip(final_models, final_model_names): 
+# final_model_names = ['svc_lin', 
+#                      'svc_rbf', 
+#                      'rndf', 
+#                      'logreg', 
+#                      'xgb']
+
+final_models = {'adb': adb_final, 
+                'gb' : gb_final}
+
+for name, model in final_models.items(): 
     
     # make prediction 
     pred     = model.predict(x_test)
