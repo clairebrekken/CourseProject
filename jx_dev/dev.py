@@ -26,13 +26,13 @@ from   sklearn.naive_bayes     import GaussianNB
 from   sklearn.ensemble        import RandomForestClassifier, \
                                       AdaBoostClassifier, \
                                       GradientBoostingClassifier
+from   sklearn.manifold        import TSNE
 import xgboost                 as     xgb
 from   sklearn.metrics         import roc_curve
 from   scipy                   import interp
 from   pathlib                 import Path
 from   pickle                  import dump
 import joblib
-
 
 # Turn interactive plotting off
 plt.ion()  
@@ -74,6 +74,80 @@ y_train  = [1 if i == 'SARCASM' else 0 for i in y_train]
 # print count
 print('The count of sarcastic tweets is:', y_train.count(1))
 print('The count of non-sarcastic tweets is:', y_train.count(0))
+
+#%% 
+#============================================================
+#  _____          _                                         
+# |  ___|__  __ _| |_ _   _ _ __ ___                        
+# | |_ / _ \/ _` | __| | | | '__/ _ \                       
+# |  _|  __/ (_| | |_| |_| | | |  __/                       
+# |_|  \___|\__,_|\__|\__,_|_| _\___|     _   _             
+# \ \   / (_)___ _   _  __ _| (_)______ _| |_(_) ___  _ __  
+#  \ \ / /| / __| | | |/ _` | | |_  / _` | __| |/ _ \| '_ \ 
+#   \ V / | \__ \ |_| | (_| | | |/ / (_| | |_| | (_) | | | |
+#    \_/  |_|___/\__,_|\__,_|_|_/___\__,_|\__|_|\___/|_| |_|
+#
+#============================================================                                                          
+
+# visualize class clustering in 3D
+
+tsne     = TSNE(n_components = 3, learning_rate = 100, random_state = 42)
+
+# transform on data 
+tsne_obj = tsne.fit_transform(x_train)
+
+# put results into a df
+tsne_df  = pd.DataFrame({'x' : tsne_obj[:,0], 
+                         'y' : tsne_obj[:,1], 
+                         'z' : tsne_obj[:,2], 
+                         'label': y_train})
+
+#%% 2D scattrplot 
+sns.scatterplot(x = "x", y = "y", hue = "label", palette = ["blue", "red"], 
+                legend = 'full', data = tsne_df);
+plt.title('Feature tsne plot')
+plt.gca().set_aspect('equal', adjustable = 'box')
+
+fig_name  = 'feat_tsne_plot_2d.jpg'
+fig_file  = os.path.join(results_dir, fig_name)
+
+manager   = plt.get_current_fig_manager()
+manager.window.showMaximized()
+plt.show()
+plt.pause(0.1) # needed for the image to be saved at full size
+plt.savefig(fig_file)
+
+#%% 3D scatterplot 
+
+ax = plt.figure(figsize=(16,10)).gca(projection = '3d')
+
+ax.scatter(xs    = tsne_df.loc[tsne_df['label'] == 0]["x"],
+           ys    = tsne_df.loc[tsne_df['label'] == 0]["y"],
+           zs    = tsne_df.loc[tsne_df['label'] == 0]["z"],
+           c     = 'blue', 
+           label = '0') 
+
+ax.scatter(xs    = tsne_df.loc[tsne_df['label'] == 1]["x"],
+           ys    = tsne_df.loc[tsne_df['label'] == 1]["y"],
+           zs    = tsne_df.loc[tsne_df['label'] == 1]["z"],
+           c     = 'red',
+           label = '1') 
+
+ax.set_xlabel('tsne_1')
+ax.set_ylabel('tsne_2')
+ax.set_zlabel('tsne_3')
+
+plt.title('feat tsne scatterplot')
+plt.legend()
+plt.show()
+
+fig_name  = 'feat_tsne_plot_3d.pickle'
+fig_file  = os.path.join(results_dir, fig_name)
+
+# save figure 
+output    = open(fig_file, 'wb')
+dump(plt.gcf(), output)
+output.close()
 
 #%%
 #===================================================
@@ -521,3 +595,20 @@ for name, model in final_models.items():
     
     # name the file, based on the classifier
     answer.to_csv(file_ans, header = None, index = None, sep = ',')
+    
+#%% 
+#===============================================
+#  _____                          _     _       
+# | ____|_ __  ___  ___ _ __ ___ | |__ | | ___  
+# |  _| | '_ \/ __|/ _ \ '_ ` _ \| '_ \| |/ _ \ 
+# | |___| | | \__ \  __/ | | | | | |_) | |  __/ 
+# |_____|_| |_|___/\___|_| |_| |_|_.__/|_|\___| 
+#  __  __      _   _               _            
+# |  \/  | ___| |_| |__   ___   __| |___        
+# | |\/| |/ _ \ __| '_ \ / _ \ / _` / __|       
+# | |  | |  __/ |_| | | | (_) | (_| \__ \       
+# |_|  |_|\___|\__|_| |_|\___/ \__,_|___/       
+#
+#===============================================
+
+                                             
