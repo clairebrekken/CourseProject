@@ -180,8 +180,8 @@ df = final_ngram_cols(df, ngram_map)
 test_df = final_ngram_cols(test_df, ngram_map)
 
 # df["POS"] = df.response.apply(run_metapy)
-df.drop(columns=["context", "tokens", "response", "unigrams", "bigrams", "trigrams", "unigram_features", "bigram_features", "trigram_features"], inplace=True)
-test_df.drop(columns=["context", "tokens", "response", "unigrams", "bigrams", "trigrams", "unigram_features", "bigram_features", "trigram_features"], inplace=True)
+df.drop(columns=["context", "tokens", "response", "unigrams", "bigrams", "trigrams", "unigram_features", "bigram_features", "trigram_features", "ngram_features"], inplace=True)
+test_df.drop(columns=["context", "tokens", "response", "unigrams", "bigrams", "trigrams", "unigram_features", "bigram_features", "trigram_features", "ngram_features"], inplace=True)
 
 print(df.shape)
 print(df.columns)
