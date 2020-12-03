@@ -95,6 +95,8 @@ def final_ngram_cols(df, ngram_map):
 
     ngram_cols = ["n-gram-" + str(i) for i in range(len(ngram_map))]
     df[ngram_cols] = pd.DataFrame(df.ngram_features.tolist(), index=df.index)
+    df["ngram_feature"] = df[ngram_cols].sum(axis=1)
+    df.drop(columns=ngram_cols, inplace=True)
 
     return df
 
