@@ -129,6 +129,66 @@ def get_simple_features(df):
     df["tokens"] = df["response"].apply(run_metapy)
     return df
 
+def context_features(df):
+    # print(df)
+    users_tagged = 0
+    tokens = []
+
+    num_hashtags = 0
+    num_capital = 0
+    # Currently includes punctuation
+    tweet_length_words = 0
+    tweet_length_char = 0
+    average_token_length = 0
+
+    contains_laughter = 0
+    contains_ellipses = 0
+    strong_negations = 0
+    strong_affirmatives = 0
+    interjections = 0
+    intensifiers = 0
+    punctuation = 0
+    emojis = 0
+    for tweet in df.loc['context']:
+        users_tagged += tweet.count("@USER")
+        tokens.append(tweet.split())
+
+        num_hashtags += tweet.count("#")
+        num_capital += tweet.count(r'[A-Z]')
+        # Currently includes punctuation
+        tweet_length_words += len(tweet.split())
+        tweet_length_char += len(tweet)
+        average_token_length += len(tweet.split())/len(tweet)
+        for w in tweet:
+            if (w.lower().startswith("haha")) or (re.match('l(o)+l$', w.lower())):
+                contains_laughter += 1
+
+        contains_ellipses += len([w for w in tweet if (w == '...') | (w == '..')])
+        strong_negations += len([w for w in tweet if w in helper.strong_negations])
+        strong_affirmatives += len([w for w in tweet if w in helper.strong_affirmatives])
+        interjections += len([w for w in tweet if w in helper.interjections])
+        intensifiers += len([w for w in tweet if w in helper.intensifiers])
+        punctuation += len([w for w in tweet if w in helper.punctuation])
+        emojis += len([w for w in tweet if w in emoji.UNICODE_EMOJI])
+    df["context_users_tagged"] = users_tagged
+    df["context_tokens"] = tokens
+    df["context_num_hashtags"] = num_hashtags
+    df["context_num_capital"] = num_capital
+    df["context_tweet_length_words"] = tweet_length_words
+    df["context_tweet_length_char"] = tweet_length_char
+    df["context_average_token_length"] = average_token_length
+    df["context_contains_laughter"] = contains_laughter
+    df["context_contains_ellipses"] = contains_ellipses
+    df["context_strong_negations"] = strong_negations
+    df["context_strong_affirmatives"] = strong_affirmatives
+    df["context_interjections"] = interjections
+    df["context_intensifiers"] = intensifiers
+    df["context_punctuation"] = punctuation
+    df["context_emojis"] = emojis
+
+    return df
+
+
 # Enter mutable info
 
 data_dir = os.path.dirname(os.getcwd()) + '/data'
@@ -156,34 +216,40 @@ df["unigrams"].apply(unigrams.update)
 df["bigrams"].apply(bigrams.update)
 df["trigrams"].apply(trigrams.update)
 
-
-# ngrams = get_ngrams(tokens, ngram_len, stopword_list)
-# print(ngrams)
-# unigrams = Counter(ngrams[1])
-# bigrams = Counter(ngrams[2])
-# trigrams = Counter(ngrams[3])
-#
 unigram_tokens = [k for k, c in unigrams.items() if c > 2]
 bigram_tokens = [k for k, c in bigrams.items() if c > 2]
 trigram_tokens = [k for k, c in trigrams.items() if c > 2]
-# print(unigram_tokens)
-# print(bigram_tokens)
-# print(trigram_tokens)
-#
+
 ngram_map = dict()
 all_ngrams = unigram_tokens
 all_ngrams.extend(bigram_tokens)
 all_ngrams.extend(trigram_tokens)
 for i in range(0, len(all_ngrams)):
     ngram_map[all_ngrams[i]] = i
-# print(ngram_map)
 
 df = final_ngram_cols(df, ngram_map)
 test_df = final_ngram_cols(test_df, ngram_map)
 
-# df["POS"] = df.response.apply(run_metapy)
-df.drop(columns=["context", "tokens", "response", "unigrams", "bigrams", "trigrams", "unigram_features", "bigram_features", "trigram_features", "ngram_features"], inplace=True)
-test_df.drop(columns=["context", "tokens", "response", "unigrams", "bigrams", "trigrams", "unigram_features", "bigram_features", "trigram_features", "ngram_features"], inplace=True)
+df = df.apply(context_features, axis=1)
+test_df = test_df.apply(context_features, axis=1)
+
+cols_to_drop = [
+    "context",
+    "tokens",
+    "response",
+    "unigrams",
+    "bigrams",
+    "trigrams",
+    "unigram_features",
+    "bigram_features",
+    "trigram_features",
+    "ngram_features",
+    "context_tokens"
+]
+df.drop(columns=cols_to_drop, inplace=True)
+test_df.drop(columns=cols_to_drop, inplace=True)
+
+
 
 print(df.shape)
 print(df.columns)
