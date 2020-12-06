@@ -18,6 +18,13 @@ with open("stopwords.txt", 'r') as file:
     file.close()
     stopword_list = text.split("\n")
 
+
+def make_normalizer(mean, std):
+    def normalize(x):
+        return (x - mean)/std
+    return normalize
+
+
 def extract_sequences(tok):
     sequences = []
     for token in tok:
@@ -194,13 +201,13 @@ def context_features(df):
 data_dir = os.path.dirname(os.getcwd()) + '/data'
 filename = 'train.jsonl'
 file = os.path.join(data_dir, filename)  # .json file
-df = utils.parse_json(file)
+train_df = utils.parse_json(file)
 
 test_filename = 'test.jsonl'
 test_file = os.path.join(data_dir, test_filename)  # .json file
 test_df = utils.parse_json(test_file)
 
-df = get_simple_features(df)
+train_df = get_simple_features(train_df)
 
 test_df = get_simple_features(test_df)
 
@@ -208,13 +215,13 @@ test_df = get_simple_features(test_df)
 unigrams = Counter()
 bigrams = Counter()
 trigrams = Counter()
-df = create_ngram_columns(df)
+train_df = create_ngram_columns(train_df)
 
 test_df = create_ngram_columns(test_df)
 
-df["unigrams"].apply(unigrams.update)
-df["bigrams"].apply(bigrams.update)
-df["trigrams"].apply(trigrams.update)
+train_df["unigrams"].apply(unigrams.update)
+train_df["bigrams"].apply(bigrams.update)
+train_df["trigrams"].apply(trigrams.update)
 
 unigram_tokens = [k for k, c in unigrams.items() if c > 2]
 bigram_tokens = [k for k, c in bigrams.items() if c > 2]
@@ -227,10 +234,10 @@ all_ngrams.extend(trigram_tokens)
 for i in range(0, len(all_ngrams)):
     ngram_map[all_ngrams[i]] = i
 
-df = final_ngram_cols(df, ngram_map)
+train_df = final_ngram_cols(train_df, ngram_map)
 test_df = final_ngram_cols(test_df, ngram_map)
 
-df = df.apply(context_features, axis=1)
+train_df = train_df.apply(context_features, axis=1)
 test_df = test_df.apply(context_features, axis=1)
 
 cols_to_drop = [
@@ -246,16 +253,37 @@ cols_to_drop = [
     "ngram_features",
     "context_tokens"
 ]
-df.drop(columns=cols_to_drop, inplace=True)
+train_df.drop(columns=cols_to_drop, inplace=True)
 test_df.drop(columns=cols_to_drop, inplace=True)
 
+# Normalize:
+train_label = train_df.pop('label')
+test_label = test_df.pop('id')
+train_stats = train_df.describe()
+print(train_stats.columns)
+print(train_df.columns)
+# train_stats.pop('label')
+train_stats = train_stats.transpose()
+norm = make_normalizer(train_stats["mean"], train_stats["std"])
+
+print(train_df.dtypes)
+print(test_df.dtypes)
+
+# normed_train_data = norm(train_df)
+# normed_test_data = norm(test_df)
+normed_train_data = train_df
+normed_test_data = test_df
+
+normed_train_data.insert(loc=0, column='label', value=train_label)
+normed_train_data.fillna(0, inplace=True)
+normed_test_data.insert(loc=0, column='id', value=test_label)
+normed_test_data.fillna(0, inplace=True)
+
+print(normed_train_data.shape)
+print(normed_train_data.columns)
+print(normed_test_data.shape)
+print(normed_test_data.columns)
 
 
-print(df.shape)
-print(df.columns)
-print(test_df.shape)
-print(test_df.columns)
-
-
-df.to_csv("train_feature_engineering.csv", index=False)
-test_df.to_csv("test_feature_engineering.csv", index=False)
+normed_train_data.to_csv("data/train_feature_engineering.csv", index=False)
+normed_test_data.to_csv("data/test_feature_engineering.csv", index=False)
