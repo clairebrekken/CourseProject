@@ -1,5 +1,4 @@
 import emoji
-import metapy
 from nltk import ngrams, pos_tag
 from nltk.tokenize import TweetTokenizer, RegexpTokenizer
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
@@ -183,40 +182,6 @@ def make_normalizer(mean, std):
     return normalize
 
 
-def extract_sequences(tok):
-    sequences = []
-    for token in tok:
-        if token == '<s>':
-            sequences.append(metapy.sequence.Sequence())
-        elif token != '</s>':
-            sequences[-1].add_symbol(token)
-    return sequences
-
-def run_metapy(tweet):
-    doc = metapy.index.Document()
-    doc.content(tweet)
-    # Create tokenizer (tags sentance boundaries)
-    tok = metapy.analyzers.ICUTokenizer(suppress_tags=True)
-    # Lowercase all tokens
-    tok = metapy.analyzers.LowercaseFilter(tok)
-    # Remove tokens that are less than 2 or more than 30 characters (punctuation, URLs)
-    tok = metapy.analyzers.LengthFilter(tok, min=2, max=30)
-    # Stemming
-    tok = metapy.analyzers.Porter2Filter(tok)
-    # POS tagging
-    # tagger = metapy.sequence.PerceptronTagger("perceptron-tagger/")
-    # tok = metapy.analyzers.PennTreebankNormalizer(tok)
-    # seqs = []
-    # for seq in extract_sequences(tok):
-    #     tagger.tag(seq)
-    #     print(seq)
-    #     seqs.append(seq)
-    tok.set_content(doc.content())
-    tokens = [token for token in tok]
-    # print(seqs)
-
-    return tokens
-
 def get_ngram_list(tokens, n):
     tokens = [t for t in tokens if not t.startswith('#')]
     tokens = [t for t in tokens if not t.startswith('@')]
@@ -234,7 +199,6 @@ def get_ngrams(tokens, n, stopwords):
     if len(n) < 1:
         return {}
     filtered = []
-    # stopwords = data_proc.get_stopwords_list()
     for t in tokens:
         if t not in stopwords and t.isalnum():
             filtered.append(t)
@@ -266,8 +230,7 @@ def final_ngram_cols(df, ngram_map):
     return df
 
 def get_simple_features(df, emoji_sent_dict):
-    # remove @USER from responses
-    # Ger number of users tagged in reponse
+    tokenizer = TweetTokenizer(preserve_case=True, reduce_len=False, strip_handles=True)
     df["users_tagged"] = df.response.str.count("@USER")
     df["response"] = df.response.str.replace('@USER', '').str.strip()
     df["tokens"] = df["response"].str.split()
@@ -294,11 +257,11 @@ def get_simple_features(df, emoji_sent_dict):
     df['positive emoji'] = df.tokens.apply(lambda tweet: sum([float(emoji_sent_dict[t][2]) for t in tweet if t in emoji_sent_dict.keys()]))
 
     # Clean up responses for tokenizing
-    df["tokens"] = df["response"].apply(run_metapy)
+    df["tokens"] = df["response"].apply(tokenizer.tokenize)
     return df
 
 def context_features(df, emoji_sent_dict):
-    # print(df)
+    tokenizer = TweetTokenizer(preserve_case=False, reduce_len=True, strip_handles=True)
     users_tagged = 0
     tokens = []
 
@@ -323,7 +286,7 @@ def context_features(df, emoji_sent_dict):
 
     for tweet in df.loc['context']:
         users_tagged += tweet.count("@USER")
-        tokens.append(tweet.split())
+        tokens.append(tokenizer.tokenize(tweet))
 
         num_hashtags += tweet.count("#")
         num_capital += tweet.count(r'[A-Z]')
@@ -417,9 +380,9 @@ if __name__ == "__main__":
     train_df["bigrams"].apply(bigrams.update)
     train_df["trigrams"].apply(trigrams.update)
 
-    unigram_tokens = [k for k, c in unigrams.items() if c > 2]
-    bigram_tokens = [k for k, c in bigrams.items() if c > 2]
-    trigram_tokens = [k for k, c in trigrams.items() if c > 2]
+    unigram_tokens = [k for k, c in unigrams.items() if c > 1]
+    bigram_tokens = [k for k, c in bigrams.items() if c > 1]
+    trigram_tokens = [k for k, c in trigrams.items() if c > 1]
 
     ngram_map = dict()
     all_ngrams = unigram_tokens
