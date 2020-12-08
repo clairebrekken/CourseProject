@@ -193,10 +193,16 @@ def run():
     print(threshold[min(precision_filtered_lst)[0]:max(recall_filtered_lst)[0]])
     print(threshold[min(precision_filtered_lst)[0]])
     print(threshold[max(recall_filtered_lst)[0]])
+    f1 = [(2*precision[i]*recall[i])/(precision[i] + recall[i]) for i in range(len(precision-1))]
+    f1_filtered_lst = [(x, y) for x, y in enumerate(f1) if y >= 0.723]
+    print(max(f1_filtered_lst))
+    print(threshold[max(f1_filtered_lst)[0]])
     precision = precision[:-1]
     recall = recall[:-1]
+    f1 = f1[:-1]
     plt.plot(threshold, precision, color="blue", label="Precision")
     plt.plot(threshold, recall, color="red", label="Recall")
+    plt.plot(threshold, f1, color="green", label="F1")
     plt.xlabel("Probability of Sarcasm Threshold")
     plt.ylabel("Metric Value")
     plt.legend()
@@ -241,13 +247,33 @@ def run():
     x_test = df_test.drop(columns=["id"])
     y_test = df_test.id
 
+    thresholds = {
+        20: .2,
+        25: .25,
+        27: .27,
+        30: .3,
+        33: .33,
+        35: .35,
+        36: .36,
+        37: .37,
+        38: .38,
+        39: .39,
+        40: .4,
+        41: .41,
+        42: .42,
+        43: .43,
+        44: .44,
+        45: .45,
+    }
+
     predictions = model.predict(x_test)
     unpacked_predictions = [row[0] for row in predictions]
     test_preds = pd.DataFrame(unpacked_predictions)
     test_preds.insert(loc=0, column='id', value=y_test)
-    test_preds["answer"] = test_preds[0].apply(lambda x: "SARCASM" if x > 0.6 else "NOT_SARCASM")
+    for key in thresholds:
+        test_preds["answer"] = test_preds[0].apply(lambda x: "SARCASM" if x > thresholds[key] else "NOT_SARCASM")
 
-    test_preds[["id", "answer"]].to_csv("results/answer.txt", index=False, header=False)
+        test_preds[["id", "answer"]].to_csv(f"results/{key}_answer.txt", index=False, header=False)
 
 
 if __name__ == "__main__":

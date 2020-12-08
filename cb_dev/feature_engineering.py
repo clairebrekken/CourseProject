@@ -1,6 +1,11 @@
 import emoji
 import metapy
-from nltk import ngrams
+from nltk import ngrams, pos_tag
+from nltk.tokenize import TweetTokenizer, RegexpTokenizer
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
+from nltk.stem.wordnet import WordNetLemmatizer
+from nltk.corpus import sentiwordnet as swn
+import itertools
 import os
 import re
 import numpy as np
@@ -12,11 +17,164 @@ from collections import Counter
 
 import warnings
 warnings.filterwarnings("ignore")
+# Get sentiment features -- a total of 16 features derived
+# Emoji features: a count of the positive, negative and neutral emojis
+# along with the ratio of positive to negative emojis and negative to neutral
+# Using the MPQA subjectivity lexicon, we have to check words for their part of speech
+# and obtain features: a count of positive, negative and neutral words, as well as
+# a count of the strong and weak subjectives, along with their ratios and a total sentiment words.
+# Also using VADER sentiment analyser to obtain a score of sentiments held in a tweet (4 features)
+def get_sentiment_features(df, emoji_sent_dict):
+    tweet = df.reponse
+    tweet_tokens = df.tokens
+    tweet_pos = df.tweet_pos
 
-with open("stopwords.txt", 'r') as file:
-    text = file.read()
-    file.close()
-    stopword_list = text.split("\n")
+    # sent_features = dict.fromkeys(["positive emoji", "negative emoji", "neutral emoji",
+    #                                "subjlexicon weaksubj", "subjlexicon strongsubj",
+    #                                "subjlexicon positive", "subjlexicon negative",
+    #                                "subjlexicon neutral", "total sentiment words",
+    #                                "swn pos", "swn neg", "swn obj"], 0.0)
+    for t in tweet_tokens:
+        if t in emoji_sent_dict.keys():
+            df['negative emoji'] += float(emoji_sent_dict[t][0])
+            df['neutral emoji'] += float(emoji_sent_dict[t][1])
+            df['positive emoji'] += float(emoji_sent_dict[t][2])
+
+    lemmatizer = WordNetLemmatizer()
+    pos_translation = {'N': 'n', 'V': 'v', 'D': 'a', 'R': 'r'}
+    for index in range(len(tweet_tokens)):
+        lemmatized = lemmatizer.lemmatize(tweet_tokens[index], 'v')
+        if tweet_pos[index] in pos_translation:
+            synsets = list(swn.senti_synsets(lemmatized, pos_translation[tweet_pos[index]]))
+            pos_score = 0
+            neg_score = 0
+            obj_score = 0
+            if len(synsets) > 0:
+                for syn in synsets:
+                    pos_score += syn.pos_score()
+                    neg_score += syn.neg_score()
+                    obj_score += syn.obj_score()
+                df["swn pos"] = pos_score / float(len(synsets))
+                df["swn neg"] = neg_score / float(len(synsets))
+                df["swn obj"] = obj_score / float(len(synsets))
+
+    # Vader Sentiment Analyser
+    # Obtain the negative, positive, neutral and compound scores of a tweet
+    sia = SentimentIntensityAnalyzer()
+    polarity_scores = sia.polarity_scores(tweet)
+    for name, score in polarity_scores.items():
+        df["Vader score " + name] = score
+    return df
+
+
+
+# Split based on Camel Case
+def camel_case_split(term):
+    term = re.sub(r'([0-9]+)', r' \1', term)
+    term = re.sub(r'(1st|2nd|3rd|4th|5th|6th|7th|8th|9th|0th)', r'\1 ', term)
+    splits = re.finditer('.+?(?:(?<=[a-z])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])|$)', term)
+    return [s.group(0) for s in splits]
+
+def split_hashtags(hashtag, word_list, verbose=False):
+    if verbose:
+        print("Hashtag is %s" % hashtag)
+    # Get rid of the hashtag
+    if hashtag.startswith('#'):
+        term = hashtag[1:]
+    else:
+        term = hashtag
+
+    # If the hastag is already an existing word (a single word), return it
+    if word_list is not None and term.lower() in word_list:
+        return ['#' + term]
+    # First, attempt splitting by CamelCase
+    if term[1:] != term[1:].lower() and term[1:] != term[1:].upper():
+        splits = camel_case_split(term)
+    elif '#' in term:
+        splits = term.split("#")
+    elif len(term) > 27:
+        if verbose:
+            print("Hashtag %s is too big so let as it is." % term)
+        splits = [term]
+    else:
+        # Second, build possible splits and choose the best split by assigning
+        # a "score" to each possible split, based on the frequency with which a word is occurring
+        penalty = -69971
+        max_coverage = penalty
+        max_splits = 6
+        n_splits = 0
+        term = re.sub(r'([0-9]+)', r' \1', term)
+        term = re.sub(r'(1st|2nd|3rd|4th|5th|6th|7th|8th|9th|0th)', r'\1 ', term)
+        term = re.sub(r'([A-Z][^A-Z ]+)', r' \1', term.strip())
+        term = re.sub(r'([A-Z]{2,})+', r' \1', term)
+        splits = term.strip().split(' ')
+        if len(splits) < 3:
+            # Splitting lower case and uppercase hashtags in up to 5 words
+            chars = [c for c in term.lower()]
+            found_all_words = False
+
+            while n_splits < max_splits and not found_all_words:
+                for index in itertools.combinations(range(0, len(chars)), n_splits):
+                    output = np.split(chars, index)
+                    line = [''.join(o) for o in output]
+                    score = 0.0
+                    for word in line:
+                        stripped = word.strip()
+                        if stripped in word_list:
+                            score += int(word_list.get(stripped))
+                        else:
+                            if stripped.isnumeric():  # not stripped.isalpha():
+                                score += 0.0
+                            else:
+                                score += penalty
+                    score = score / float(len(line))
+                    if score > max_coverage:
+                        splits = line
+                        max_coverage = score
+                        line_is_valid_word = [word.strip() in word_list if not word.isnumeric()
+                                              else True for word in line]
+                        if all(line_is_valid_word):
+                            found_all_words = True
+                n_splits = n_splits + 1
+    splits = ['#' + str(s) for s in splits]
+    if verbose:
+        print("Split to: ", splits)
+    return splits
+
+# Initial tweet cleaning - useful to filter data before tokenization
+def clean_tweet(tweet, word_list, split_hashtag_method=split_hashtags, replace_user_mentions=True,
+                remove_hashtags=False, remove_emojis=False, all_to_lower_case=False):
+    # Add white space before every punctuation sign so that we can split around it and keep it
+    tweet = re.sub('([!?*&%"~`^+{}])', r' \1 ', tweet)
+    tweet = re.sub('\s{2,}', ' ', tweet)
+    tokens = tweet.split()
+    valid_tokens = []
+    for word in tokens:
+        # Never include #sarca* hashtags
+        if word.lower().startswith('#sarca'):
+            continue
+        # Never include URLs
+        if 'http' in word:
+            continue
+        # Replace specific user mentions with a general user name
+        if replace_user_mentions and word.startswith('@'):
+            word = '@user'
+        # Split or remove hashtags
+        if word.startswith('#'):
+            if remove_hashtags:
+                continue
+            splits = split_hashtag_method(word[1:], word_list)
+            if all_to_lower_case:
+                valid_tokens.extend([split.lower() for split in splits])
+            else:
+                valid_tokens.extend(splits)
+            continue
+        if remove_emojis and word in emoji.UNICODE_EMOJI:
+            continue
+        if all_to_lower_case:
+            word = word.lower()
+        valid_tokens.append(word)
+    return ' '.join(valid_tokens)
 
 
 def make_normalizer(mean, std):
@@ -107,7 +265,7 @@ def final_ngram_cols(df, ngram_map):
 
     return df
 
-def get_simple_features(df):
+def get_simple_features(df, emoji_sent_dict):
     # remove @USER from responses
     # Ger number of users tagged in reponse
     df["users_tagged"] = df.response.str.count("@USER")
@@ -131,12 +289,15 @@ def get_simple_features(df):
     df["intensifiers"] = df.tokens.apply(lambda tweet: len([w for w in tweet if w in helper.intensifiers]))
     df["punctuation"] = df.tokens.apply(lambda tweet: len([w for w in tweet if w in helper.punctuation]))
     df["emojis"] = df.tokens.apply(lambda tweet: len([w for w in tweet if w in emoji.UNICODE_EMOJI]))
+    df['negative emoji'] = df.tokens.apply(lambda tweet: sum([float(emoji_sent_dict[t][0]) for t in tweet if t in emoji_sent_dict.keys()]))
+    df['neutral emoji'] = df.tokens.apply(lambda tweet: sum([float(emoji_sent_dict[t][1]) for t in tweet if t in emoji_sent_dict.keys()]))
+    df['positive emoji'] = df.tokens.apply(lambda tweet: sum([float(emoji_sent_dict[t][2]) for t in tweet if t in emoji_sent_dict.keys()]))
 
     # Clean up responses for tokenizing
     df["tokens"] = df["response"].apply(run_metapy)
     return df
 
-def context_features(df):
+def context_features(df, emoji_sent_dict):
     # print(df)
     users_tagged = 0
     tokens = []
@@ -156,6 +317,10 @@ def context_features(df):
     intensifiers = 0
     punctuation = 0
     emojis = 0
+    negative_emoji = 0
+    neutral_emoji = 0
+    positive_emoji = 0
+
     for tweet in df.loc['context']:
         users_tagged += tweet.count("@USER")
         tokens.append(tweet.split())
@@ -177,6 +342,9 @@ def context_features(df):
         intensifiers += len([w for w in tweet if w in helper.intensifiers])
         punctuation += len([w for w in tweet if w in helper.punctuation])
         emojis += len([w for w in tweet if w in emoji.UNICODE_EMOJI])
+        negative_emoji += sum([float(emoji_sent_dict[t][0]) for t in tweet if t in emoji_sent_dict.keys()])
+        neutral_emoji += sum([float(emoji_sent_dict[t][1]) for t in tweet if t in emoji_sent_dict.keys()])
+        positive_emoji += sum([float(emoji_sent_dict[t][2]) for t in tweet if t in emoji_sent_dict.keys()])
     df["context_users_tagged"] = users_tagged
     df["context_tokens"] = tokens
     df["context_num_hashtags"] = num_hashtags
@@ -192,98 +360,124 @@ def context_features(df):
     df["context_intensifiers"] = intensifiers
     df["context_punctuation"] = punctuation
     df["context_emojis"] = emojis
+    df['context_negative emoji'] = negative_emoji
+    df['context_neutral emoji'] = neutral_emoji
+    df['context_positive emoji'] = positive_emoji
 
     return df
 
+if __name__ == "__main__":
+    stopword_list = []
+    word_list = {}
+    emoji_sent_dict = {}
+    with open("stopwords.txt", 'r') as file:
+        text = file.read()
+        file.close()
+        stopword_list = text.split("\n")
 
-# Enter mutable info
+    with open("word_list.txt", 'r') as file:
+        lines = file.read()
+        file.close()
+        for line in lines.split("\n"):
+            key, value = line.split("\t")
+            word_list[key] = value
+    with open("emoji_sent_dict.txt", 'r') as file:
+        lines = file.read()
+        file.close()
+        for line in lines.split("\n"):
+            key = line.split("\t")[0]
+            value = line.split("\t")[1:]
+            emoji_sent_dict[key] = value
 
-data_dir = os.path.dirname(os.getcwd()) + '/data'
-filename = 'train.jsonl'
-file = os.path.join(data_dir, filename)  # .json file
-train_df = utils.parse_json(file)
+    data_dir = os.path.dirname(os.getcwd()) + '/data'
+    filename = 'train.jsonl'
+    file = os.path.join(data_dir, filename)  # .json file
+    train_df = utils.parse_json(file)
 
-test_filename = 'test.jsonl'
-test_file = os.path.join(data_dir, test_filename)  # .json file
-test_df = utils.parse_json(test_file)
+    test_filename = 'test.jsonl'
+    test_file = os.path.join(data_dir, test_filename)  # .json file
+    test_df = utils.parse_json(test_file)
 
-train_df = get_simple_features(train_df)
+    train_df["response"] = train_df.response.apply(clean_tweet, args=[word_list])
+    test_df["response"] = test_df.response.apply(clean_tweet, args=[word_list])
 
-test_df = get_simple_features(test_df)
+    train_df = get_simple_features(train_df, emoji_sent_dict)
 
-# need to remove punctionation, emojis before doing this
-unigrams = Counter()
-bigrams = Counter()
-trigrams = Counter()
-train_df = create_ngram_columns(train_df)
+    test_df = get_simple_features(test_df, emoji_sent_dict)
 
-test_df = create_ngram_columns(test_df)
+    # need to remove punctionation, emojis before doing this
+    unigrams = Counter()
+    bigrams = Counter()
+    trigrams = Counter()
+    train_df = create_ngram_columns(train_df)
 
-train_df["unigrams"].apply(unigrams.update)
-train_df["bigrams"].apply(bigrams.update)
-train_df["trigrams"].apply(trigrams.update)
+    test_df = create_ngram_columns(test_df)
 
-unigram_tokens = [k for k, c in unigrams.items() if c > 2]
-bigram_tokens = [k for k, c in bigrams.items() if c > 2]
-trigram_tokens = [k for k, c in trigrams.items() if c > 2]
+    train_df["unigrams"].apply(unigrams.update)
+    train_df["bigrams"].apply(bigrams.update)
+    train_df["trigrams"].apply(trigrams.update)
 
-ngram_map = dict()
-all_ngrams = unigram_tokens
-all_ngrams.extend(bigram_tokens)
-all_ngrams.extend(trigram_tokens)
-for i in range(0, len(all_ngrams)):
-    ngram_map[all_ngrams[i]] = i
+    unigram_tokens = [k for k, c in unigrams.items() if c > 2]
+    bigram_tokens = [k for k, c in bigrams.items() if c > 2]
+    trigram_tokens = [k for k, c in trigrams.items() if c > 2]
 
-train_df = final_ngram_cols(train_df, ngram_map)
-test_df = final_ngram_cols(test_df, ngram_map)
+    ngram_map = dict()
+    all_ngrams = unigram_tokens
+    all_ngrams.extend(bigram_tokens)
+    all_ngrams.extend(trigram_tokens)
+    for i in range(0, len(all_ngrams)):
+        ngram_map[all_ngrams[i]] = i
 
-train_df = train_df.apply(context_features, axis=1)
-test_df = test_df.apply(context_features, axis=1)
+    train_df = final_ngram_cols(train_df, ngram_map)
+    test_df = final_ngram_cols(test_df, ngram_map)
 
-cols_to_drop = [
-    "context",
-    "tokens",
-    "response",
-    "unigrams",
-    "bigrams",
-    "trigrams",
-    "unigram_features",
-    "bigram_features",
-    "trigram_features",
-    "ngram_features",
-    "context_tokens"
-]
-train_df.drop(columns=cols_to_drop, inplace=True)
-test_df.drop(columns=cols_to_drop, inplace=True)
+    train_df = train_df.apply(context_features, axis=1, args=[emoji_sent_dict])
+    test_df = test_df.apply(context_features, axis=1, args=[emoji_sent_dict])
 
-# Normalize:
-train_label = train_df.pop('label')
-test_label = test_df.pop('id')
-train_stats = train_df.describe()
-print(train_stats.columns)
-print(train_df.columns)
-# train_stats.pop('label')
-train_stats = train_stats.transpose()
-norm = make_normalizer(train_stats["mean"], train_stats["std"])
+    cols_to_drop = [
+        "context",
+        "tokens",
+        "response",
+        "unigrams",
+        "bigrams",
+        "trigrams",
+        "unigram_features",
+        "bigram_features",
+        "trigram_features",
+        "ngram_features",
+        "context_tokens"
+    ]
+    train_df.drop(columns=cols_to_drop, inplace=True)
+    test_df.drop(columns=cols_to_drop, inplace=True)
 
-print(train_df.dtypes)
-print(test_df.dtypes)
+    # Normalize:
+    train_label = train_df.pop('label')
+    test_label = test_df.pop('id')
+    train_stats = train_df.describe()
+    print(train_stats.columns)
+    print(train_df.columns)
+    # train_stats.pop('label')
+    train_stats = train_stats.transpose()
+    norm = make_normalizer(train_stats["mean"], train_stats["std"])
 
-# normed_train_data = norm(train_df)
-# normed_test_data = norm(test_df)
-normed_train_data = train_df
-normed_test_data = test_df
+    print(train_df.dtypes)
+    print(test_df.dtypes)
 
-normed_train_data.insert(loc=0, column='label', value=train_label)
-normed_train_data.fillna(0, inplace=True)
-normed_test_data.insert(loc=0, column='id', value=test_label)
-normed_test_data.fillna(0, inplace=True)
+    normed_train_data = norm(train_df)
+    normed_test_data = norm(test_df)
+    # normed_train_data = train_df
+    # normed_test_data = test_df
 
-print(normed_train_data.shape)
-print(normed_train_data.columns)
-print(normed_test_data.shape)
-print(normed_test_data.columns)
+    normed_train_data.insert(loc=0, column='label', value=train_label)
+    normed_train_data.fillna(0, inplace=True)
+    normed_test_data.insert(loc=0, column='id', value=test_label)
+    normed_test_data.fillna(0, inplace=True)
+
+    print(normed_train_data.shape)
+    print(normed_train_data.columns)
+    print(normed_test_data.shape)
+    print(normed_test_data.columns)
 
 
-normed_train_data.to_csv("data/train_feature_engineering.csv", index=False)
-normed_test_data.to_csv("data/test_feature_engineering.csv", index=False)
+    normed_train_data.to_csv("data/train_feature_engineering.csv", index=False)
+    normed_test_data.to_csv("data/test_feature_engineering.csv", index=False)
