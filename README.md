@@ -30,3 +30,21 @@ twitter_1,SARCASM
 twitter_2,NOT_SARCASM  
 ...
 
+## Code:
+There are 3 Jupyter notebooks which contain the code developed for this project: 
+
+- feature_engineering.ipynb
+- conventional_ml.ipynb
+- bert.ipynb
+
+***conventional_ml.ipynb***: 
+
+This notebook is self-contained and can be run from top to bottom in sequence. 
+The only dependency is the file **utils_text_clf.py**, which contains auxillary functions to process data.
+
+
+
+
+
+
+
