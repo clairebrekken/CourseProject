@@ -31,17 +31,32 @@ twitter_2,NOT_SARCASM
 ...
 
 ## Code:
+### Requirements:
+- Python version >= 3.7
+- `pip3 install -r requirements.txt`
+
+### Files:
 There are 3 Jupyter notebooks which contain the code developed for this project: 
 
 - feature_engineering.ipynb
-- conventional_ml.ipynb
+- ml.ipynb
 - bert.ipynb
 
-***conventional_ml.ipynb***: 
+***feature_engineering.ipynb***
+This notebook is self-contained and can be run from top to bottom in sequence. 
+The only dependency is the file **utils_text_clf.py**, which contains auxillary functions to process data. This notebook 
+outputs data to be used in the conventional ML models.
+
+***ml.ipynb***: 
 
 This notebook is self-contained and can be run from top to bottom in sequence. 
-The only dependency is the file **utils_text_clf.py**, which contains auxillary functions to process data.
+The only dependency is the file **utils_text_clf.py**, which contains auxillary functions to process data. 
+It is also dependent on **feature_engineering.py** to have been run previously and that the output of that notebook 
+has been saved.
 
+***bert.ipynb***
+This notebook is self-contained and can be run from top to bottom in sequence. 
+The only dependency is the file **utils_text_clf.py**, which contains auxillary functions to process data.
 
 
 
